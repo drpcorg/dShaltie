@@ -1,14 +1,10 @@
 package config
 
 import (
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"time"
 )
-
-var defaultHedge = &HedgeConfig{
-	Delay: 1 * time.Second,
-	Count: 1,
-}
 
 func (a *AppConfig) setDefaults() {
 	if a.UpstreamConfig == nil {
@@ -18,6 +14,9 @@ func (a *AppConfig) setDefaults() {
 		a.ServerConfig = &ServerConfig{
 			Port: 9090,
 		}
+	}
+	if a.CacheConfig == nil {
+		a.CacheConfig = &CacheConfig{}
 	}
 	if a.CacheConfig != nil {
 		a.CacheConfig.setDefaults()
@@ -66,23 +65,34 @@ func (c *CacheConnectorConfig) setDefaults() {
 
 func (u *UpstreamConfig) setDefaults() {
 	if u.FailsafeConfig == nil {
-		u.FailsafeConfig = &FailsafeConfig{
-			HedgeConfig: defaultHedge,
-		}
-	} else {
-		if u.FailsafeConfig.HedgeConfig == nil {
-			u.FailsafeConfig.HedgeConfig = defaultHedge
-		}
+		u.FailsafeConfig = &FailsafeConfig{}
 	}
+	if u.ScorePolicyConfig == nil {
+		u.ScorePolicyConfig = &ScorePolicyConfig{}
+	}
+	u.ScorePolicyConfig.setDefaults()
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults)
 	}
 }
 
+func (s *ScorePolicyConfig) setDefaults() {
+	if s.CalculationInterval == 0 {
+		s.CalculationInterval = 10 * time.Second
+	}
+	if s.CalculationFunction == "" && s.CalculationFunctionFilePath == "" {
+		log.Info().Msg("no explicit rating function is specified, 'DefaultLatencyPolicyFunc' will be used to calculate rating")
+		s.CalculationFunction = DefaultLatencyPolicyFunc
+	}
+}
+
 func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	if u.Methods == nil {
 		u.Methods = &MethodsConfig{}
+	}
+	if u.FailsafeConfig == nil {
+		u.FailsafeConfig = &FailsafeConfig{}
 	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
 		filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
